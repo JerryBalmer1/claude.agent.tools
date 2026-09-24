@@ -1,0 +1,13 @@
+# Credentials. The ignore rule exists before the file it protects.
+.env
+.env.*
+!.env.example
+
+# Private keys.
+*.pem
+id_ed25519*
+
+# Build output.
+*.log
+output/
+out/
