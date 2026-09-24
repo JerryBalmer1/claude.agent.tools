@@ -44,6 +44,22 @@
     Not scanned: vendor/ (another repository's tree), .continuity/ (an append-only chain whose
     records are history by construction), corpus/ (frozen inspector output).
 
+    THE TARGET'S SETTINGS
+
+    The target may carry config/inspector.json. It is the target's own statement about its own
+    tree, so it is read from the target, never from here. A target without one is inspected
+    with every list empty. Two lists, and each entry names a path and a reason:
+
+      test_data            PowerShell files whose STRING LITERALS are fixture text: the
+                           defects a test writes down so a rule has something to find. A
+                           finding inside a string literal in a listed file is not emitted.
+                           Comments and code in the same file are scanned as usual, and so
+                           is every file that is not listed.
+      optional_files       Paths that are cited as optional and may be absent. An entry
+                           excuses cited-file-missing only in the files its cited_in names
+                           (and in config/inspector.json itself, where it is declared).
+                           A citation of the same path from anywhere else still fails.
+
 .PARAMETER Path
     Root of the target repository's work tree.
 
@@ -160,6 +176,7 @@ function Get-FileModel {
     else { 'prose' }
 
     $comments = [System.Collections.Generic.List[int[]]]::new()
+    $strings = [System.Collections.Generic.List[int[]]]::new()
     if ($kind -eq 'powershell') {
         $tokens = $null
         $errors = $null
@@ -168,9 +185,12 @@ function Get-FileModel {
             if ($t.Kind -eq [System.Management.Automation.Language.TokenKind]::Comment) {
                 $comments.Add([int[]]@($t.Extent.StartOffset, $t.Extent.EndOffset))
             }
+            elseif ($t -is [System.Management.Automation.Language.StringToken]) {
+                $strings.Add([int[]]@($t.Extent.StartOffset, $t.Extent.EndOffset))
+            }
         }
     }
-    return @{ Rel = $Rel; Text = $text; Starts = $starts; Kind = $kind; Comments = $comments }
+    return @{ Rel = $Rel; Text = $text; Starts = $starts; Kind = $kind; Comments = $comments; Strings = $strings }
 }
 
 function Get-LineOf {
@@ -211,6 +231,51 @@ function Get-Context {
 
 $models = @(foreach ($rel in $scanned) { Get-FileModel -Rel $rel })
 
+# ------------------------------------------------------------------ the target's settings
+
+$settingsRel = 'config/inspector.json'
+$settings = $null
+$settingsPath = Join-Path $Root $settingsRel
+if (Test-Path -LiteralPath $settingsPath) { $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json -Depth 10 }
+
+function Get-SettingList {
+    <#  One list from the target's settings, every entry checked for the fields it must carry. #>
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string[]]$Field)
+    if (-not $settings -or $settings.PSObject.Properties.Name -notcontains $Name) { return @() }
+    $list = @($settings.$Name)
+    foreach ($e in $list) {
+        foreach ($f in $Field) {
+            if ($e.PSObject.Properties.Name -notcontains $f -or -not $e.$f) {
+                throw "${settingsRel}: an entry in $Name has no '$f'. Every entry names what it excuses and why."
+            }
+        }
+    }
+    return $list
+}
+
+$testData = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($e in @(Get-SettingList -Name 'test_data' -Field 'path', 'reason')) {
+    # Only PowerShell has string literals the tokenizer can find. Excusing a whole markdown file
+    # would excuse its prose, which is exactly the weakening this list must not allow.
+    if ([string]$e.path -notmatch '\.(ps1|psm1|psd1)$') {
+        throw "${settingsRel}: test_data entry '$($e.path)' is not a PowerShell file; only string literals can be test data"
+    }
+    [void]$testData.Add([string]$e.path)
+}
+
+$optional = @{}
+foreach ($e in @(Get-SettingList -Name 'optional_files' -Field 'path', 'cited_in', 'reason')) {
+    $optional[[string]$e.path] = @(@($e.cited_in) + $settingsRel)
+}
+
+function Test-TestData {
+    <#  $true when Offset sits inside a string literal of a file the target lists as test data. #>
+    param([Parameter(Mandatory)]$Model, [Parameter(Mandatory)][int]$Offset)
+    if (-not $testData.Contains($Model.Rel)) { return $false }
+    foreach ($s in $Model.Strings) { if ($Offset -ge $s[0] -and $Offset -lt $s[1]) { return $true } }
+    return $false
+}
+
 # The raw verdict inputs are collected as hashtables and turned into verdicts once, at the end,
 # so there is exactly one place an output object is built.
 $found = [System.Collections.Generic.List[hashtable]]::new()
@@ -226,6 +291,7 @@ foreach ($m in $models) {
     foreach ($r in $retired) {
         $pattern = '(?<![A-Za-z0-9.-])' + [regex]::Escape([string]$r.name) + '(?![A-Za-z0-9-])'
         foreach ($hit in [regex]::Matches($m.Text, $pattern, 'IgnoreCase')) {
+            if (Test-TestData -Model $m -Offset $hit.Index) { continue }
             $context = Get-Context -Model $m -Offset $hit.Index
             $line = Get-LineOf -Model $m -Offset $hit.Index
             $successor = if ($r.successor) { "; successor $($r.successor)" } else { '' }
@@ -253,6 +319,7 @@ foreach ($m in $models) {
     foreach ($hit in [regex]::Matches($m.Text, '(?<![A-Za-z0-9_.-])vendor/(?<name>[A-Za-z0-9_-]+(?:\\?\.[A-Za-z0-9_-]+)*)')) {
         $name = $hit.Groups['name'].Value.Replace('\.', '.').TrimEnd('.')
         if (-not $name -or $vendorLive.Contains($name)) { continue }
+        if (Test-TestData -Model $m -Offset $hit.Index) { continue }
         $context = Get-Context -Model $m -Offset $hit.Index
         $line = Get-LineOf -Model $m -Offset $hit.Index
         $live = if ($vendorLive.Count) { ($vendorLive | Sort-Object) -join ', ' } else { 'none' }
@@ -308,6 +375,7 @@ foreach ($m in $models) {
                 -not (Test-Path -LiteralPath (Join-Path $Root $first))) { continue }
             if (Test-Cited -Token $token -FromRel $m.Rel) { continue }
         }
+        if (Test-TestData -Model $m -Offset $i) { continue }
         $line = Get-LineOf -Model $m -Offset $i
         $candidates.Add(@{ Token = $token; Rel = $m.Rel; Line = $line; Source = "cited: $(Get-LineText -Model $m -Line $line)" })
     }
@@ -357,6 +425,7 @@ for ($k = 0; $k -lt $probe.Count; $k += 50) {
 $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 foreach ($c in $candidates) {
     if ($ignored.Contains($c.Token)) { continue }
+    if ($optional.ContainsKey($c.Token) -and $optional[$c.Token] -contains $c.Rel) { continue }
     if (-not $seen.Add("$($c.Rel)|$($c.Line)|$($c.Token)")) { continue }
     $isRecord = $c.Rel -match '^(END_GOAL\.md|CHANGELOG[^/]*|docs/plans/.+)$'
     Add-Found 'cited-file-missing' $c.Rel $c.Line $(if ($isRecord) { 'warn' } else { 'fail' }) `

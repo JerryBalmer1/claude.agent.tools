@@ -1,0 +1,16 @@
+{
+  "note": "This repository's statement about its own tree, read by src/Inspect-Repo.ps1 when this repository is the target. Every entry names what it excuses and why. An entry excuses one path; it never turns a rule off.",
+  "test_data": [
+    {
+      "path": "tests/Inspect-Repo.Tests.ps1",
+      "reason": "Its string literals are fixture text: the missing files, dead vendor paths and retired names each rule must find. Its comments and code are still scanned."
+    }
+  ],
+  "optional_files": [
+    {
+      "path": "docs/do-not.md",
+      "cited_in": [ "src/Inspect-Repo.ps1" ],
+      "reason": "-Policy accepts a directory and reads AGENTS.md, docs/do-not.md and CLAUDE.md from it if present. That help text names an input shape, not a file this repository must carry."
+    }
+  ]
+}
