@@ -1,7 +1,7 @@
 #Requires -Version 7.4
 
 <#
-    Ported from claude.agent.images@249752d, tests/Sentinel.Tests.ps1 (blob 0106bea5), the
+    Ported from claude.agent.images@249752d:tests/Sentinel.Tests.ps1 (blob 0106bea5), the
     Describe block 'One-element JSON array: one trap, met two ways' at lines 237-274. The It body
     is unchanged. The BeforeAll carries only what that block reads from the original file's
     BeforeAll: the repository root, the sentinel's path and the ledger manifest path. The rest
