@@ -177,7 +177,7 @@ try {
     # gone rather than left in place: it would keep working unchanged if the
     # export were ever withdrawn, which is exactly the failure worth being told
     # about. Called as an export, a withdrawal is loud here and in
-    # tests/Sentinel.Tests.ps1 instead of silently passing through a private name.
+    # claude.agent.images@249752d:tests/Sentinel.Tests.ps1 instead of silently passing through a private name.
     $receipt = Add-LedgerRecord -Path $LedgerPath -Attempt 1 -Validator 'sentinel' `
         -Mode $Mode -Model "$principal/$tool/$decision" -Sha256 $payloadSha
 
