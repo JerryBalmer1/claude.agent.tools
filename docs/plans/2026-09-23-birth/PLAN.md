@@ -46,3 +46,9 @@ Out of scope: fuzzer, chaos mode, query surface, `Docs.Render`, touching core or
   test, the `$env:TEMP` test, `tests/Test-AgentsClaims.ps1`, and the empty-suite branch
   closed. Local: 14/0/0/0. Each of the six claims plus the loop check was broken in a temp clone,
   and each break turned exactly its own `It` red.
+- 2026-09-24 - PR 1 #2: scratch `ee1fc92` added a Dockerfile; run 35947096213 went red on exactly
+  `no-dockerfile`, and `b0c0098` removed the file. Automerge merged #2 as `1915092` on its own.
+- 2026-09-24 - PR 2 on `feature/inspector`: `src/Inspect-Repo.ps1` with five rules, `-Policy`
+  through core, `-Halt`, `-Offline`. Suite 26/0/0/0. Corpus `corpus/images-249752d.jsonl`, 155
+  verdicts, reproducible; the I10 mapping of found and missed items is on the forensic chain at
+  seq 2.
