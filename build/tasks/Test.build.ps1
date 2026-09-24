@@ -20,14 +20,11 @@ task Test.Unit {
 
     $files = Get-SuiteFile -TestRoot $Build.TestRoot
 
-    # THE EMPTY SUITE, FOR THE BIRTH PACKET ONLY. Pester throws on a path
-    # with no test files rather than returning a result, so a repository
-    # born with zero tests needs this line to report 0/0/0/0 honestly
-    # instead of a stack trace. PR 1 lands the first tests and turns this
-    # branch into a failure.
+    # An empty suite is a failure, not a pass. The birth packet reported
+    # 0/0/0/0 here while tests/ held no suite file; PR 1 landed the first
+    # tests and closed that branch.
     if ($files.Count -eq 0) {
-        Write-Build Yellow 'host: gate passed=0 failed=0 skipped=0 notrun=0 -- no suite files under tests/'
-        return
+        throw 'host: no suite files under tests/; an empty suite is not a green'
     }
 
     $outDir = $Build.OutputPath

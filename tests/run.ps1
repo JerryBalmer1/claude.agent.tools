@@ -42,10 +42,10 @@ $pinned = (Get-Content -LiteralPath (Join-Path $repoRoot 'config' 'repo.json') -
 
 if (-not $Path) { $Path = Get-SuiteFile -TestRoot $PSScriptRoot }
 
-# The birth packet's empty suite. See build/tasks/Test.build.ps1; PR 1 removes this.
+# An empty suite is a failure, as in build/tasks/Test.build.ps1.
 if (@($Path).Count -eq 0) {
-    Write-Host 'SUITE: 0 passed, 0 failed, 0 skipped, 0 notrun -- no suite files under tests/'
-    exit 0
+    Write-Host 'SUITE: no suite files under tests/; an empty suite is not a green'
+    exit 1
 }
 
 Import-Module Pester -RequiredVersion $pinned -Force

@@ -63,13 +63,11 @@ if (-not (Test-Path -LiteralPath $policyManifest)) {
 
 $files = Get-SuiteFile -TestRoot (Join-Path $RepoRoot 'tests')
 
-# The birth packet's empty suite. Pester throws on a path holding no test file rather than
-# returning a result, so zero files is reported as a 0/0/0/0 gate. PR 1 lands the first tests
-# and turns this branch into a failure.
+# An empty suite is a failure. The birth packet reported a 0/0/0/0 gate here while tests/ held no
+# suite file; PR 1 landed the first tests and closed that branch.
 if ($files.Count -eq 0) {
-    Write-Host 'pester: gate passed=0 failed=0 skipped=0 notrun=0 -- no suite files under tests/'
-    Write-Host 'pester: PASS'
-    exit 0
+    Write-Host 'pester: FAIL -- no suite files under tests/; an empty suite is not a green'
+    exit 1
 }
 
 Write-Host "pester: pinned version $pinned (config/repo.json -> tooling.pester)"
