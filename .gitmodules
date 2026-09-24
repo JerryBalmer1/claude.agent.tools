@@ -1,0 +1,3 @@
+[submodule "vendor/claude.agent.core"]
+	path = vendor/claude.agent.core
+	url = https://github.com/JerryBalmer1/claude.agent.core.git

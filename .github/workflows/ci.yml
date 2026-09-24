@@ -1,0 +1,83 @@
+# One job per entry in config/repo.json -> required_checks.
+#
+# Copied from claude.agent.images@249752d (blob 3c9b9ed4), then adapted: the `incontainer` job is
+# gone because tools builds no image, which leaves six checks.
+#
+# The job KEY is the check name, and no job sets `name:`. That is deliberate: when a job has no
+# display name, GitHub reports the check run under the job key, so the names the automerge
+# workflow matches on are exactly the strings in config/repo.json. Adding a `name:` here would
+# silently rename the check and automerge would wait forever for a check that never reports.
+#
+# The `generated-match-config` job asserts that the set of job keys below equals
+# config.required_checks, so this file cannot drift from the config without going red.
+#
+# No inline bash anywhere. Every step is `shell: pwsh` calling a script in scripts/.
+name: ci
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  requires-header:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - shell: pwsh
+        run: ./scripts/ci/Test-RequiresHeader.ps1
+
+  trailer-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - shell: pwsh
+        run: ./scripts/ci/Test-Trailers.ps1 -Base '${{ github.event.pull_request.base.sha }}'
+
+  branch-flow:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: ./scripts/ci/Test-BranchFlow.ps1 -Head '${{ github.event.pull_request.head.ref }}' -Base '${{ github.event.pull_request.base.ref }}'
+
+  generated-match-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: ./scripts/ci/Test-GeneratedMatchesConfig.ps1
+
+  pester:
+    runs-on: ubuntu-latest
+    steps:
+      # `submodules: recursive` fetches vendor/claude.agent.core, whose policy module -Policy
+      # resolves against. core is PUBLIC, so the workflow GITHUB_TOKEN clones it with no secret
+      # and no `token:` key. scripts/ci/Invoke-Tests.ps1 fails the check if it is absent.
+      #
+      # fetch-depth: 0 so the suite can walk history; a shallow clone makes base..HEAD empty,
+      # which passes vacuously.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - shell: pwsh
+        run: ./scripts/ci/Invoke-Tests.ps1
+
+  forensic-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: ./scripts/forensic.ps1 -Verify
