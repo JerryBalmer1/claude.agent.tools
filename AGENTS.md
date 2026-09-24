@@ -18,6 +18,7 @@ file. A row that cannot be measured does not belong in this table.
 | `no-dockerfile` | No Dockerfile. | No tracked `Dockerfile*`, `*.dockerfile`, `.dockerignore` or compose file outside `vendor/`. Images is the only repository that builds images. |
 | `typed-verdicts` | Every verdict is a typed object with a result field, never a printed line. | Every `[pscustomobject]` literal under `src/` carries a `PSTypeName` beginning `claude.agent.tools.` and a `Verdict` key. No `Write-Host`, `Out-Host` or `Format-*` call under `src/`. |
 | `temp-root` | Every suite resolves its temp root from `[System.IO.Path]::GetTempPath()`. | No file under `tests/` reads `$env:TEMP`, `$env:TMP` or `$env:TMPDIR`. |
+| `merge-commits-only` | A pull request can land only as a merge commit. | The repository named by `config/repo.json` -> `repo`, read live through `gh api graphql` (in CI with `GITHUB_TOKEN`), answers `mergeCommitAllowed` true, `squashMergeAllowed` false and `rebaseMergeAllowed` false. No answer is a failure, not a pass. |
 
 ## Branches
 
