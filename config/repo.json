@@ -1,0 +1,41 @@
+{
+  "schema": "claude.agent.repo/1",
+  "repo": "JerryBalmer1/claude.agent.tools",
+  "branches": {
+    "main": "main",
+    "develop": "develop",
+    "feature_prefix": "feature/"
+  },
+  "flow": [
+    [ "feature/*", "develop" ],
+    [ "develop", "main" ]
+  ],
+  "merge": {
+    "strategy": "merge",
+    "delete_branch_on_merge": true
+  },
+  "review": {
+    "mode": "auto",
+    "note": "auto from birth: the automerge workflow merges a pull request once all six checks are green; flip to human and regenerate to stand it down"
+  },
+  "required_checks": [
+    "requires-header",
+    "trailer-guard",
+    "branch-flow",
+    "generated-match-config",
+    "pester",
+    "forensic-verify"
+  ],
+  "scripts": {
+    "requires_version": "7.4"
+  },
+  "tooling": {
+    "pester": "6.1.0",
+    "invokebuild": "5.14.23"
+  },
+  "trailer": {
+    "key": "who",
+    "allowed": [ "claude", "grok", "fable", "jerry" ]
+  },
+  "owners": [ "@JerryBalmer1" ]
+}

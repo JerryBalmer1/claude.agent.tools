@@ -1,0 +1,11 @@
+{
+  "note": "Repository names that no longer name a live repository. src/Inspect-Repo.ps1 rule stale-repo-name reports every occurrence in a target's tracked tree. This file is the list's only home, and the inspector skips it when the target is this repository.",
+  "retired": [
+    { "name": "claude.pwsh.image.builder", "successor": "claude.agent.images" },
+    { "name": "claude.build.ledger", "successor": "claude.agent.core" },
+    { "name": "claude.build.policy", "successor": "claude.agent.core" },
+    { "name": "claude.build.inspector", "successor": "claude.agent.tools" },
+    { "name": "claude.build.fuzzer", "successor": "claude.agent.tools" },
+    { "name": "claude.build.orchestrator", "successor": null }
+  ]
+}
