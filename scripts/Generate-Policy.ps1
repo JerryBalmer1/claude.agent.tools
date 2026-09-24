@@ -238,10 +238,13 @@ function New-PullRequestTemplate {
     & $add ''
     # The wall is this repository's, not the one this generator was copied from. substrate's
     # version said "substrate is never a container", which is the exact opposite of true here.
+    # Tools builds no image, so images' "no direct docker call" becomes "no Dockerfile" (the
+    # AGENTS.md no-dockerfile claim), beside no-python.
     & $add '- [ ] Nothing under `vendor/` was edited, and the submodule pin is unchanged'
     & $add '- [ ] No sibling repository was touched'
-    & $add '- [ ] `Invoke-Build` is still the only entry point - no direct docker, Pester or ScriptAnalyzer call'
+    & $add '- [ ] `Invoke-Build` is still the build entry point - no direct Pester or ScriptAnalyzer call'
     & $add '- [ ] No bash, no heredocs, no `cat >` - including in CI'
+    & $add '- [ ] No Python and no Dockerfile'
     & $add '- [ ] No `Co-Authored-By` trailer on any commit'
 
     return $lines.ToArray()

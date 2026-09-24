@@ -16,9 +16,9 @@
 docs/POLICY.md text eol=lf
 .github/PULL_REQUEST_TEMPLATE.md text eol=lf
 
-# Consumed by git INSIDE the container as GIT_CONFIG_GLOBAL, off the bind mount, so it must not
-# arrive carrying CRLF from a Windows checkout.
-build/container.gitconfig text eol=lf
+# FROZEN FIXTURES. Inspector output committed under corpus/ is cited by blob sha, so its bytes
+# must be the same on every clone. The inspector writes LF.
+corpus/*.jsonl text eol=lf
 
 # THE FORENSIC CHAIN. LF, for the same reason the generated files above are LF, but with a
 # sharper failure: `self` is a sha256 over the record, and the file is the only copy of the

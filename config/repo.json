@@ -1,6 +1,6 @@
 {
   "schema": "claude.agent.repo/1",
-  "repo": "JerryBalmer1/claude.agent.images",
+  "repo": "JerryBalmer1/claude.agent.tools",
   "branches": {
     "main": "main",
     "develop": "develop",
@@ -16,7 +16,7 @@
   },
   "review": {
     "mode": "auto",
-    "note": "auto while the reconciliation lands; flip to human and regenerate once main and develop agree"
+    "note": "auto from birth: the automerge workflow merges a pull request once all six checks are green; flip to human and regenerate to stand it down"
   },
   "required_checks": [
     "requires-header",
@@ -24,7 +24,6 @@
     "branch-flow",
     "generated-match-config",
     "pester",
-    "incontainer",
     "forensic-verify"
   ],
   "scripts": {
