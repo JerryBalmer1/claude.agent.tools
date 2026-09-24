@@ -179,6 +179,43 @@ Describe 'AGENTS.md claims, measured against the tree' {
         $breaches | Should -BeNullOrEmpty
     }
 
+    It 'merge-commits-only: a pull request can land only as a merge commit' {
+        # Live repository state, not the tree: the merge button is a setting. GraphQL, not REST,
+        # because GET repos/<slug> leaves the allow_*_merge fields out for a token without push
+        # access, and the workflow GITHUB_TOKEN is contents: read.
+        $configPath = Join-Path $script:Root 'config' 'repo.json'
+        $configPath | Should -Exist
+        $slug = [string](Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json -Depth 20).repo
+        $slug | Should -Match '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' -Because 'config/repo.json -> repo names the repository to measure'
+        $owner, $name = $slug -split '/', 2
+
+        $query = 'query($o:String!,$n:String!){repository(owner:$o,name:$n){mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed}}'
+        $PSNativeCommandUseErrorActionPreference = $false
+        $answer = (& gh api graphql -f "query=$query" -f "o=$owner" -f "n=$name" 2>&1 | Out-String).Trim()
+        $code = $LASTEXITCODE
+        $PSNativeCommandUseErrorActionPreference = $true
+        $code | Should -Be 0 -Because "an unmeasured setting is not a green one; gh answered: $answer"
+
+        $repo = ($answer | ConvertFrom-Json -Depth 10).data.repository
+        $repo | Should -Not -BeNullOrEmpty -Because "GraphQL returned no repository for ${slug}: $answer"
+        $settings = [ordered]@{
+            mergeCommitAllowed = $repo.mergeCommitAllowed
+            squashMergeAllowed = $repo.squashMergeAllowed
+            rebaseMergeAllowed = $repo.rebaseMergeAllowed
+        }
+        # One assertion over all three, so a red run names every setting that is wrong at once.
+        ($settings | ConvertTo-Json -Compress) |
+            Should -BeExactly '{"mergeCommitAllowed":true,"squashMergeAllowed":false,"rebaseMergeAllowed":false}' -Because "$slug must offer the merge commit and nothing else"
+    }
+
+    It 'self-inspection-clean: src/Inspect-Repo.ps1 finds nothing to fail in this tree' {
+        # The inspector that measures is this repository's; the tree it measures is -Path's.
+        $inspector = Join-Path (Split-Path -Parent $PSScriptRoot) 'src' 'Inspect-Repo.ps1'
+        $fails = @(& $inspector -Path $script:Root -Offline | Where-Object Verdict -eq 'fail' |
+                ForEach-Object { "$($_.Path):$($_.Line) [$($_.Rule)] $($_.Evidence)" })
+        $fails | Should -BeNullOrEmpty
+    }
+
     It 'every claim in AGENTS.md has an It here, and every It here names a claim' {
         $agents = Join-Path $script:Root 'AGENTS.md'
         $agents | Should -Exist

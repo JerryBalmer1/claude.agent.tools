@@ -151,6 +151,63 @@ Describe 'Inspect-Repo: rules' {
     }
 }
 
+Describe 'Inspect-Repo: the target''s settings, config/inspector.json' {
+    It 'test_data: string literals in a listed file are fixture text; its comments and every unlisted file are not' {
+        $defects = "'docs/gone.md vendor/gone/x claude.build.ledger'"
+        $root = New-Fixture @{
+            'config/inspector.json' = '{"test_data":[{"path":"t.Tests.ps1","reason":"fixture text"}]}'
+            't.Tests.ps1'           = "`$fixture = $defects`n# see docs/also-gone.md"
+            'other.ps1'             = "`$fixture = $defects"
+        }
+        $v = @(Invoke-Inspector -Root $root | Where-Object Rule -ne 'unprotected-branch')
+
+        # The listed file keeps exactly one finding: the one in its comment, which is not a literal.
+        @($v | Where-Object Path -eq 't.Tests.ps1').Count | Should -Be 1
+        @($v | Where-Object Path -eq 't.Tests.ps1')[0].Evidence | Should -Match "^'docs/also-gone\.md'"
+
+        # The same literal in a file nobody listed is still three fails, one per rule.
+        @($v | Where-Object { $_.Path -eq 'other.ps1' -and $_.Verdict -eq 'fail' }).Rule | Sort-Object |
+            Should -Be @('cited-file-missing', 'dead-vendor-path', 'stale-repo-name')
+    }
+
+    It 'test_data: an entry that is not a PowerShell file is refused, not honoured' {
+        $root = New-Fixture @{ 'config/inspector.json' = '{"test_data":[{"path":"README.md","reason":"would excuse prose"}]}' }
+        { Invoke-Inspector -Root $root } | Should -Throw '*not a PowerShell file*'
+    }
+
+    It 'optional_files: excused only where cited_in names the citing file, and where it is declared' {
+        $root = New-Fixture @{
+            'config/inspector.json' = '{"optional_files":[{"path":"docs/opt.md","cited_in":["a.ps1"],"reason":"an optional input"}]}'
+            'a.ps1'                 = '# reads docs/opt.md when it is there'
+            'b.ps1'                 = '# reads docs/opt.md when it is there'
+        }
+        $v = @(Invoke-Inspector -Root $root | Where-Object Rule -eq 'cited-file-missing')
+        $v.Path | Should -Be @('b.ps1')
+        $v[0].Verdict | Should -Be 'fail'
+    }
+
+    It 'optional_files: an entry with no reason is refused' {
+        $root = New-Fixture @{ 'config/inspector.json' = '{"optional_files":[{"path":"docs/opt.md","cited_in":["a.ps1"]}]}' }
+        { Invoke-Inspector -Root $root } | Should -Throw "*has no 'reason'*"
+    }
+
+    It 'a target with no config/inspector.json is inspected with every list empty' {
+        $root = New-Fixture @{ 't.Tests.ps1' = "`$fixture = 'docs/gone.md'" }
+        @(Invoke-Inspector -Root $root | Where-Object Rule -eq 'cited-file-missing').Verdict | Should -Be @('fail')
+    }
+
+    It 'a config/inspector.json of {} is the same as none, and an entry of {} is refused' {
+        $root = New-Fixture @{
+            'config/inspector.json' = '{}'
+            't.Tests.ps1'           = "`$fixture = 'docs/gone.md'"
+        }
+        @(Invoke-Inspector -Root $root | Where-Object Rule -eq 'cited-file-missing').Verdict | Should -Be @('fail')
+
+        $bad = New-Fixture @{ 'config/inspector.json' = '{"test_data":[{}]}' }
+        { Invoke-Inspector -Root $bad } | Should -Throw "*has no 'path'*"
+    }
+}
+
 Describe 'Inspect-Repo: switches' {
     It '-Halt exits 1 when any verdict is fail, and 0 when none is' {
         # Exit 1 is the passing case here, so a non-zero native exit must not throw.

@@ -5,7 +5,8 @@
 #   origin file   : scripts/AutoMerge.Lib.ps1
 #   origin commit : 912c1c9eb48ab0b639d257bc7b10661d7212f985
 #   origin sha256 : 0e3564d420aa5a53975ba0db047108e1ef173381209cc63dbb91312aebb9ce6d
-#   adapted here  : no - byte-identical at copy time
+#   adapted here  : YES - comments only, citations of substrate's test suite removed
+#   carried via   : claude.agent.images@249752d, byte-identical there; adapted for tools
 #
 # There is no submodule here and substrate does not follow this copy. If substrate's
 # version moves, this one does not move with it. Diff the two against the origin commit
@@ -16,7 +17,7 @@
     The review-mode gate, factored out of Invoke-AutoMerge.ps1 so it can be tested.
 
 .DESCRIPTION
-    Dot-sourced by scripts/Invoke-AutoMerge.ps1 and by tests/AutoMerge.Tests.ps1.
+    Dot-sourced by scripts/Invoke-AutoMerge.ps1. No test in this repository dot-sources it.
 
     THIS FILE HAS NO TOP-LEVEL SIDE EFFECTS ON PURPOSE. Dot-sourcing it defines functions and
     does nothing else: it sets no preference variables, reads no config, and runs no command.
@@ -29,9 +30,9 @@
     in a script that starts by calling `gh pr view`, the only way to exercise it was to open a
     real pull request against a real repository and watch what happened. That is a proof that
     costs a merge, which means in practice it is a proof nobody runs. Here it is three functions
-    over plain data, and tests/AutoMerge.Tests.ps1 drives them with a `gh` that answers from a
-    table -- so "a pull request cannot authorise its own merge" is a claim that gets re-checked
-    on every CI run, for free, without merging anything.
+    over plain data, so a test can drive them with a `gh` that answers from a table -- and then
+    "a pull request cannot authorise its own merge" is a claim re-checked on every CI run, for
+    free, without merging anything. This repository carries no such test.
 
     `gh` is invoked as a bare command name rather than through a path or an injected callable.
     That is what lets a test shadow it with a function of the same name, and it is also the

@@ -199,12 +199,11 @@ function Get-SkipJustification {
         itself; for SkipWhen it is the text after the colon, pulled from the pattern's
         own named group so the pattern and the extraction cannot drift apart.
 
-        THE HOME FOR THIS IS DELIBERATE. build/tasks/Test.build.ps1 (host) and
-        build/InContainer.Test.ps1 (container) are two independent implementations of
-        the same gate, and they already differ on NotRun. Writing this rule a third and
-        fourth time would guarantee they eventually disagree about what a justification
-        even is. The container reaches this module at /work/build, which is bind-mounted;
-        nothing here depends on Invoke-Build.
+        THE HOME FOR THIS IS DELIBERATE. build/tasks/Test.build.ps1 (the host build) and
+        scripts/ci/Invoke-Tests.ps1 (the `pester` check) both gate the suite, and both
+        reach this rule through Assert-SuiteClean. Writing it once per runner would
+        guarantee they eventually disagree about what a justification even is. Nothing
+        here depends on Invoke-Build, which is what lets the CI script import it.
 
     .EXAMPLE
         Get-SkipJustification -Tag @('SkipWhen:no-exempt-commit-in-range')
@@ -276,8 +275,8 @@ function Assert-SuiteClean {
         Pester reports a test excluded by -ExcludeTag as NotRun, which is not a skip: it
         was never part of the run. Passing the filter in is what lets one implementation
         serve a run that excludes tags and a run that does not, instead of two that differ
-        by accident - which is how the host and container gates came to disagree on NotRun
-        in the first place. build/InContainer.Test.ps1 applies the same rule inline.
+        by accident - which is how the host and container gates in images came to disagree
+        on NotRun in the first place.
 
         Test.Unit passes nothing here because it excludes nothing, so every NotRun it sees
         really is unexplained and stays unjustified. Inconclusive gets no tag escape in
