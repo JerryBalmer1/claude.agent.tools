@@ -2,18 +2,21 @@
 
 <#
 .SYNOPSIS
-    Shared helpers for the claude.agent.images build surface.
+    Shared helpers for the claude.agent.tools build surface.
 
 .DESCRIPTION
     Task bodies in build/tasks/*.build.ps1 orchestrate and render. The work
     lives here so it can be unit-tested on the host without Invoke-Build.
 
-    Canonical JSON is the load-bearing piece: run-01's preflight gate hashes
-    prompts/assessment.2026-09-21.json and refuses to proceed on a mismatch.
-    "Canonical" means recursively key-sorted (ordinal) and whitespace-free, so
-    the hash is a property of the *values*, not of how someone formatted them.
-    This must agree byte-for-byte with Python's
-    json.dumps(obj, sort_keys=True, separators=(',', ':')).
+    COPIED FROM claude.agent.images@249752d (blob f94d1055), then adapted:
+    the assessment-hash gate is removed because this repository has no
+    assessment, and Get-SuiteFile is added so that every runner here
+    (Test.Unit, scripts/ci/Invoke-Tests.ps1, tests/run.ps1) discovers the
+    same files. Assert-SuiteClean and Get-SkipJustification are unchanged.
+
+    "Canonical" JSON means recursively key-sorted (ordinal) and
+    whitespace-free, so a hash is a property of the *values*, not of how
+    someone formatted them.
 #>
 
 Set-StrictMode -Version Latest
@@ -114,7 +117,7 @@ function Get-CanonicalJsonSha256 {
         Canonical sha256 of a JSON document on disk.
 
     .EXAMPLE
-        Get-CanonicalJsonSha256 -Path ./prompts/assessment.2026-09-21.json
+        Get-CanonicalJsonSha256 -Path ./config/repo.json
     #>
     [CmdletBinding()]
     [OutputType([string])]
@@ -136,34 +139,39 @@ function Get-CanonicalJsonSha256 {
     return (Get-StringSha256 -Text $canonical)
 }
 
-function Test-AssessmentHash {
+function Get-SuiteFile {
     <#
     .SYNOPSIS
-        run-01 preflight gate. Throws on mismatch; returns the hash on success.
+        Every file the suite runs: tests/*.Tests.ps1 plus tests/Test-*.ps1.
 
     .DESCRIPTION
-        The gate exists because the run order carries the assessment inline and
-        the repo carries it on disk. If those two ever disagree, every later
-        step is being taken against a document nobody agreed to.
+        Pester discovers only *.Tests.ps1 when it is handed a directory, but it
+        runs any .ps1 it is handed by name. The compliance runner is named
+        Test-AgentsClaims.ps1 because it is a command as well as a suite, so a
+        directory-only run would silently leave it out. All three runners in
+        this repository call this function, so they can't disagree about what
+        the suite is.
+
+        Returns full paths, sorted ordinally so that two machines list the same
+        files in the same order.
     #>
     [CmdletBinding()]
-    [OutputType([string])]
+    [OutputType([string[]])]
     param(
         [Parameter(Mandatory, Position = 0)]
         [ValidateNotNullOrEmpty()]
-        [string]$Path,
-
-        [Parameter(Mandatory, Position = 1)]
-        [ValidatePattern('^[0-9a-f]{64}$')]
-        [string]$ExpectedSha256
+        [string]$TestRoot
     )
 
-    $actual = Get-CanonicalJsonSha256 -Path $Path
-    if ($actual -ne $ExpectedSha256) {
-        throw ("Assessment hash mismatch for {0}`n  expected: {1}`n  actual:   {2}" -f $Path, $ExpectedSha256, $actual)
-    }
-    Write-Verbose "[helpers] assessment hash verified: $actual"
-    return $actual
+    if (-not (Test-Path -LiteralPath $TestRoot -PathType Container)) { return , [string[]]@() }
+
+    $files = [string[]]@(
+        Get-ChildItem -LiteralPath $TestRoot -File -Filter '*.ps1' |
+            Where-Object { $_.Name -like '*.Tests.ps1' -or $_.Name -like 'Test-*.ps1' } |
+            ForEach-Object { $_.FullName }
+    )
+    [Array]::Sort($files, [System.StringComparer]::Ordinal)
+    return , $files
 }
 
 function Get-SkipJustification {
@@ -343,5 +351,5 @@ function Assert-SuiteClean {
 }
 
 Export-ModuleMember -Function 'ConvertTo-CanonicalObject', 'ConvertTo-CanonicalJson',
-    'Get-StringSha256', 'Get-CanonicalJsonSha256', 'Test-AssessmentHash',
+    'Get-StringSha256', 'Get-CanonicalJsonSha256', 'Get-SuiteFile',
     'Get-SkipJustification', 'Assert-SuiteClean'

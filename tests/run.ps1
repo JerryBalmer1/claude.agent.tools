@@ -4,16 +4,27 @@
     Runs the repo's Pester suite. Read-only: it never commits, pushes or tags.
 
 .DESCRIPTION
-    Pinned to Pester 5.x deliberately. Three majors are installed on this machine
-    (3.4.0, 5.7.1, 6.1.0) and an unpinned `Import-Module Pester` takes the highest,
-    which changes the configuration API underneath the suite without warning.
+    Copied from claude.agent.images@249752d (blob 181aa202), then adapted.
 
-    A later plan extends this runner. Keep the contract: -Path narrows the run,
-    -Evidence tees the transcript to a file, exit code is 0 green / 1 red.
+    THE DIRECTORY-NAME GUARD IS GONE. images asserted that the work tree's
+    folder was named claude.agent.images and threw otherwise, which ties a
+    runner to one folder name on one machine: a clone into any other
+    directory could not run its own tests. The property that guard was
+    reaching for is that the suite being run is the suite THIS COPY of the
+    runner lives beside. That is now how the root is found: from
+    $PSScriptRoot, never from the caller's current directory, so running
+    this file from inside another clone still runs this clone's suite.
+
+    Pester is pinned to config/repo.json -> tooling.pester, the version CI
+    installs, rather than the 5.x range images pinned here while its CI ran
+    6.1.0.
+
+    Contract: -Path narrows the run, -Evidence tees the transcript to a
+    file, exit code is 0 green / 1 red.
 #>
 [CmdletBinding()]
 param(
-    # Test files or directories to run. Defaults to every *.Tests.ps1 beside this script.
+    # Test files or directories to run. Defaults to every suite file beside this script.
     [string[]] $Path,
 
     # Tee the full transcript to this file as well as the screen.
@@ -23,14 +34,21 @@ param(
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 
-$repoRoot = (git rev-parse --show-toplevel)
-if ($repoRoot -notmatch 'claude\.agent\.images$') { throw 'NOT IN CLAUDE.AGENT.IMAGES' }
-Set-Location -LiteralPath $repoRoot
+$repoRoot = Split-Path -Parent $PSScriptRoot
+Import-Module (Join-Path $repoRoot 'build' 'Build.Helpers.psm1') -Force -ErrorAction Stop
 
-if (-not $Path) { $Path = Join-Path $repoRoot 'tests' }
+$pinned = (Get-Content -LiteralPath (Join-Path $repoRoot 'config' 'repo.json') -Raw |
+    ConvertFrom-Json -Depth 20).tooling.pester
 
-# Pester 5.x, not 6, not 3. See the note above.
-Import-Module Pester -MinimumVersion 5.0.0 -MaximumVersion 5.999.999 -Force
+if (-not $Path) { $Path = Get-SuiteFile -TestRoot $PSScriptRoot }
+
+# The birth packet's empty suite. See build/tasks/Test.build.ps1; PR 1 removes this.
+if (@($Path).Count -eq 0) {
+    Write-Host 'SUITE: 0 passed, 0 failed, 0 skipped, 0 notrun -- no suite files under tests/'
+    exit 0
+}
+
+Import-Module Pester -RequiredVersion $pinned -Force
 Write-Verbose ("Pester {0}" -f (Get-Module Pester).Version)
 
 if ($Evidence) {
@@ -51,8 +69,8 @@ try {
     $result = Invoke-Pester -Configuration $config
 
     Write-Host ''
-    Write-Host ("SUITE: {0} passed, {1} failed, {2} skipped" -f
-        $result.PassedCount, $result.FailedCount, $result.SkippedCount)
+    Write-Host ("SUITE: {0} passed, {1} failed, {2} skipped, {3} notrun" -f
+        $result.PassedCount, $result.FailedCount, $result.SkippedCount, $result.NotRunCount)
 }
 finally {
     if ($Evidence) { Stop-Transcript | Out-Null }
