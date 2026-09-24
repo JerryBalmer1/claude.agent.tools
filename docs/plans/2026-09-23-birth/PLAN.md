@@ -38,4 +38,11 @@ Out of scope: fuzzer, chaos mode, query surface, `Docs.Render`, touching core or
 
 - 2026-09-23 - birth `6dacb34` pushed to `develop` (first, so it is the default branch) and
   `main`. Copy commit `d88c816`: 25 files byte-identical to images@249752d. Core submodule
-  `76ba0b8`. Forensic genesis seq 1. PR 0 open.
+  `76ba0b8`. Forensic genesis seq 1.
+- 2026-09-23 - PR 0 #1 merged `a3d36b6`, six checks green (run 35946658179). Automerge stood
+  down as predicted (no config on the base), so claude merged it with `gh pr merge --merge`.
+  A fresh recursive clone of `develop` ran `Invoke-Build Full`: exit 0, gate 0/0/0/0.
+- 2026-09-23 - PR 1 on `feature/baseline`: TestHelpers copied and adapted, the one-element-array
+  test, the `$env:TEMP` test, `tests/Test-AgentsClaims.ps1`, and the empty-suite branch
+  closed. Local: 14/0/0/0. Each of the six claims plus the loop check was broken in a temp clone,
+  and each break turned exactly its own `It` red.
