@@ -195,6 +195,17 @@ Describe 'Inspect-Repo: the target''s settings, config/inspector.json' {
         $root = New-Fixture @{ 't.Tests.ps1' = "`$fixture = 'docs/gone.md'" }
         @(Invoke-Inspector -Root $root | Where-Object Rule -eq 'cited-file-missing').Verdict | Should -Be @('fail')
     }
+
+    It 'a config/inspector.json of {} is the same as none, and an entry of {} is refused' {
+        $root = New-Fixture @{
+            'config/inspector.json' = '{}'
+            't.Tests.ps1'           = "`$fixture = 'docs/gone.md'"
+        }
+        @(Invoke-Inspector -Root $root | Where-Object Rule -eq 'cited-file-missing').Verdict | Should -Be @('fail')
+
+        $bad = New-Fixture @{ 'config/inspector.json' = '{"test_data":[{}]}' }
+        { Invoke-Inspector -Root $bad } | Should -Throw "*has no 'path'*"
+    }
 }
 
 Describe 'Inspect-Repo: switches' {

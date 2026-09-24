@@ -241,11 +241,13 @@ if (Test-Path -LiteralPath $settingsPath) { $settings = Get-Content -LiteralPath
 function Get-SettingList {
     <#  One list from the target's settings, every entry checked for the fields it must carry. #>
     param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string[]]$Field)
-    if (-not $settings -or $settings.PSObject.Properties.Name -notcontains $Name) { return @() }
+    # Properties[name], not Properties.Name: on an object with no properties at all - a settings
+    # file that is just {} - member enumeration of .Name throws under strict mode.
+    if ($null -eq $settings -or $null -eq $settings.PSObject.Properties[$Name]) { return @() }
     $list = @($settings.$Name)
     foreach ($e in $list) {
         foreach ($f in $Field) {
-            if ($e.PSObject.Properties.Name -notcontains $f -or -not $e.$f) {
+            if ($null -eq $e.PSObject.Properties[$f] -or -not $e.$f) {
                 throw "${settingsRel}: an entry in $Name has no '$f'. Every entry names what it excuses and why."
             }
         }

@@ -5,7 +5,8 @@
 #   origin file   : scripts/Invoke-AutoMerge.ps1
 #   origin commit : 912c1c9eb48ab0b639d257bc7b10661d7212f985
 #   origin sha256 : b3c9716326dd26d433f56e7c09d26a3b4afdd4ae4a5b2fbecf81165dd054beb8
-#   adapted here  : no - byte-identical at copy time
+#   adapted here  : YES - comments only, citations of files this tree does not carry removed
+#   carried via   : claude.agent.images@249752d, byte-identical there; adapted for tools
 #
 # There is no submodule here and substrate does not follow this copy. If substrate's
 # version moves, this one does not move with it. Diff the two against the origin commit
@@ -24,9 +25,8 @@
     is wrong here:
 
     1. `gh pr checks --required` is NOT used. "Required" is a branch-protection concept, and
-       branch protection is not available on a private repository on the free tier - see
-       docs/plans/2026-09-21-repo-policy/PROTECTION.md. On this repo `--required` has no set to
-       report on. Instead the required set is read from config/repo.json, which is where it is
+       branch protection is not available on a private repository on the free tier, which is
+       where this script was written. On this repo `--required` has no set to report on. Instead the required set is read from config/repo.json, which is where it is
        defined anyway, and each name is looked up in the commit's check runs. That is stronger
        than --required, not weaker: it is config-driven rather than dependent on a paid feature,
        and a check that silently stopped reporting is absent rather than green-by-omission.
@@ -55,8 +55,9 @@
     same hole wearing a different hat. The accepted cost is that a review.mode change does not
     govern the pull request that introduces it, only the ones after it has merged.
 
-    tests/AutoMerge.Tests.ps1 is the proof, and it costs nothing to re-run: reverting
-    Get-ReviewConfigRef to the head turns it red without a pull request being opened.
+    No test in this repository proves it. The gate lives in scripts/AutoMerge.Lib.ps1 so that
+    one can: a test that reverts Get-ReviewConfigRef to the head would go red without a pull
+    request being opened.
 
 .EXAMPLE
     ./scripts/Invoke-AutoMerge.ps1 -Repo JerryBalmer1/claude.agent.substrate -PullRequest 1
@@ -72,8 +73,8 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 Set-StrictMode -Version 3.0
 
-# The review-mode gate. Dot-sourced rather than inlined so that tests/AutoMerge.Tests.ps1 can
-# drive the exact code path that runs here.
+# The review-mode gate. Dot-sourced rather than inlined so that a test can drive the exact code
+# path that runs here.
 . (Join-Path $PSScriptRoot 'AutoMerge.Lib.ps1')
 
 function Write-Step { param([string]$Message) Write-Host "automerge: $Message" }
@@ -111,7 +112,7 @@ if ($pr.isDraft)          { Write-Step 'pull request is a draft - nothing to do'
 
 # ------------------------------------------------------------------ the review-mode gate
 
-# One read, from the BASE branch. See the closed-hole note above and tests/AutoMerge.Tests.ps1.
+# One read, from the BASE branch. See the closed-hole note above.
 # $config is used below for required_checks and branches as well, and it is the base's copy of
 # both on purpose - the head does not get a say in what gates it.
 $gate   = Test-ReviewModeAuto -Repo $Repo -PullRequest $pr

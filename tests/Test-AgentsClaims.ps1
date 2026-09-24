@@ -208,6 +208,14 @@ Describe 'AGENTS.md claims, measured against the tree' {
             Should -BeExactly '{"mergeCommitAllowed":true,"squashMergeAllowed":false,"rebaseMergeAllowed":false}' -Because "$slug must offer the merge commit and nothing else"
     }
 
+    It 'self-inspection-clean: src/Inspect-Repo.ps1 finds nothing to fail in this tree' {
+        # The inspector that measures is this repository's; the tree it measures is -Path's.
+        $inspector = Join-Path (Split-Path -Parent $PSScriptRoot) 'src' 'Inspect-Repo.ps1'
+        $fails = @(& $inspector -Path $script:Root -Offline | Where-Object Verdict -eq 'fail' |
+                ForEach-Object { "$($_.Path):$($_.Line) [$($_.Rule)] $($_.Evidence)" })
+        $fails | Should -BeNullOrEmpty
+    }
+
     It 'every claim in AGENTS.md has an It here, and every It here names a claim' {
         $agents = Join-Path $script:Root 'AGENTS.md'
         $agents | Should -Exist
