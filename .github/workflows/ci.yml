@@ -1,0 +1,111 @@
+# One job per entry in config/repo.json -> required_checks.
+#
+# The job KEY is the check name, and no job sets `name:`. That is deliberate: when a job has no
+# display name, GitHub reports the check run under the job key, so the names the automerge
+# workflow matches on are exactly the strings in config/repo.json. Adding a `name:` here would
+# silently rename the check and automerge would wait forever for a check that never reports.
+#
+# The `generated-match-config` job asserts that the set of job keys below equals
+# config.required_checks, so this file cannot drift from the config without going red.
+#
+# No inline bash anywhere. Every step is `shell: pwsh` calling a script in scripts/.
+name: ci
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+jobs:
+  requires-header:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - shell: pwsh
+        run: ./scripts/ci/Test-RequiresHeader.ps1
+
+  trailer-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - shell: pwsh
+        run: ./scripts/ci/Test-Trailers.ps1 -Base '${{ github.event.pull_request.base.sha }}'
+
+  branch-flow:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: ./scripts/ci/Test-BranchFlow.ps1 -Head '${{ github.event.pull_request.head.ref }}' -Base '${{ github.event.pull_request.base.ref }}'
+
+  generated-match-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: ./scripts/ci/Test-GeneratedMatchesConfig.ps1
+
+  pester:
+    runs-on: ubuntu-latest
+    steps:
+      # `submodules: recursive` fetches vendor/claude.agent.core, which carries the Ledger module
+      # the sentinel writes receipts through. core is PUBLIC, so the workflow GITHUB_TOKEN clones
+      # it with no secret and no `token:` key. With the manifest present, scripts/ci/Invoke-Tests.ps1
+      # does not exclude the `Ledger` tag and every Ledger-tagged test runs in this check.
+      #
+      # Until 2026-09-23 this comment said the opposite: that the submodule was
+      # vendor/claude.build.ledger, that it was private, and that fetching it needed a PAT only
+      # Jerry could create. The path was wrong from birth - the submodule has been
+      # vendor/claude.agent.core since then - and the privacy premise died when core was measured
+      # public. Forensic chain seq 19.
+      #
+      # fetch-depth: 0 so the suite can walk history; the trailer tests need a real graph, and a
+      # shallow clone makes base..HEAD empty, which passes vacuously.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - shell: pwsh
+        run: ./scripts/ci/Invoke-Tests.ps1
+
+  incontainer:
+    runs-on: ubuntu-latest
+    steps:
+      # The suite where the artefact is: both images built on the runner, then Invoke-Build
+      # Test.InContainer - the task a promotion measures as clause (b) - runs it inside the leash
+      # image as the non-root user. The script reports per-task elapsed time in the job summary,
+      # because whether this job may gate pull requests was decided on that number (forensic
+      # chain seq 21) and it should stay visible on every run.
+      #
+      # fetch-depth: 0 for the same reason as pester: the repository is bind-mounted at /work
+      # and the trailer tests walk its history from inside the container.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+      - shell: pwsh
+        run: ./scripts/ci/Invoke-InContainer.ps1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: incontainer
+          path: output/incontainer.json
+          if-no-files-found: error
+
+  forensic-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: ./scripts/forensic.ps1 -Verify
