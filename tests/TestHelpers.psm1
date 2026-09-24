@@ -2,7 +2,11 @@
 
 <#
 .SYNOPSIS
-    Shared test plumbing for the run-01 Pester suite.
+    Shared test plumbing for the claude.agent.tools Pester suite.
+
+    Copied from claude.agent.images@249752d (blob ec48d5c1), then adapted:
+    Invoke-Native is removed because it existed to drive docker, and tools
+    builds no image. Everything else is unchanged.
 
 .DESCRIPTION
     Everything here exists so the suite can make exact claims about a script's
@@ -131,52 +135,6 @@ function Invoke-LeashScript {
     }
 }
 
-function Invoke-Native {
-    <#
-    .SYNOPSIS
-        Run a native executable and capture stdout, stderr and exit code.
-
-    .DESCRIPTION
-        Used for docker. A non-zero exit is data here, not an error, so this
-        deliberately does not go through PowerShell's native-command error
-        handling: $PSNativeCommandUseErrorActionPreference would turn the
-        failure this test is asserting into a terminating error.
-    #>
-    [CmdletBinding()]
-    [OutputType([pscustomobject])]
-    param(
-        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$FilePath,
-        [Parameter()][string[]]$Arguments = @(),
-        [Parameter()][int]$TimeoutSeconds = 900
-    )
-
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $FilePath
-    foreach ($a in $Arguments) { $psi.ArgumentList.Add($a) }
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.UseShellExecute = $false
-
-    $proc = [System.Diagnostics.Process]::new()
-    $proc.StartInfo = $psi
-    [void]$proc.Start()
-    $outTask = $proc.StandardOutput.ReadToEndAsync()
-    $errTask = $proc.StandardError.ReadToEndAsync()
-
-    if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
-        try { $proc.Kill($true) } catch { }
-        throw "native command timed out after ${TimeoutSeconds}s: $FilePath"
-    }
-
-    $result = [pscustomobject]@{
-        ExitCode = $proc.ExitCode
-        StdOut   = $outTask.GetAwaiter().GetResult()
-        StdErr   = $errTask.GetAwaiter().GetResult()
-    }
-    $proc.Dispose()
-    return $result
-}
-
 function New-LeashSandbox {
     <#
     .SYNOPSIS
@@ -237,6 +195,6 @@ function ConvertFrom-JsonSafe {
     catch { throw "expected JSON but could not parse: <$Text>" }
 }
 
-Export-ModuleMember -Function 'Get-PwshPath', 'Invoke-LeashScript', 'Invoke-Native',
+Export-ModuleMember -Function 'Get-PwshPath', 'Invoke-LeashScript',
     'New-LeashSandbox', 'Remove-LeashSandbox', 'Get-RepoRoot', 'Get-LedgerManifestPath',
     'ConvertFrom-JsonSafe'
