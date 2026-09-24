@@ -29,7 +29,8 @@
                            .gitmodules nor a tracked directory. Same fail/warn split.
       cited-file-missing   A repo-relative path, or a bare file name in backticks or a
                            markdown link, names a file that is neither tracked nor on disk
-                           nor gitignored. fail, except warn when the citing file is a
+                           nor gitignored. A path ending in / names a DIRECTORY and is met
+                           only by a directory. fail, except warn when the citing file is a
                            record (END_GOAL.md, CHANGELOG*, docs/plans/**), which cites
                            history. With -Policy, every path-kind rule the law compiles to is
                            checked the same way.
@@ -48,7 +49,7 @@
 
     The target may carry config/inspector.json. It is the target's own statement about its own
     tree, so it is read from the target, never from here. A target without one is inspected
-    with every list empty. Two lists, and each entry names a path and a reason:
+    with every list empty. Three lists, and each entry names a path and a reason:
 
       test_data            PowerShell files whose STRING LITERALS are fixture text: the
                            defects a test writes down so a rule has something to find. A
@@ -59,6 +60,8 @@
                            excuses cited-file-missing only in the files its cited_in names
                            (and in config/inspector.json itself, where it is declared).
                            A citation of the same path from anywhere else still fails.
+      not_directories      Slash-ended tokens that are not directories, such as a branch
+                           prefix. Matched exactly, and only against directory citations.
 
 .PARAMETER Path
     Root of the target repository's work tree.
@@ -268,6 +271,9 @@ foreach ($e in @(Get-SettingList -Name 'optional_files' -Field 'path', 'cited_in
     $optional[[string]$e.path] = @(@($e.cited_in) + $settingsRel)
 }
 
+$notDirectories = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($e in @(Get-SettingList -Name 'not_directories' -Field 'token', 'reason')) { [void]$notDirectories.Add([string]$e.token) }
+
 function Test-TestData {
     <#  $true when Offset sits inside a string literal of a file the target lists as test data. #>
     param([Parameter(Mandatory)]$Model, [Parameter(Mandatory)][int]$Offset)
@@ -337,24 +343,45 @@ Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyCont
     ForEach-Object { [void]$diskLeaves.Add($_.Name) }
 
 function Test-Cited {
-    <#  $true when a cited relative path names something that is there. #>
-    param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][AllowEmptyString()][string]$FromRel)
+    <#  $true when a cited relative path names something that is there. With -Directory, only a
+        directory will do: a slash-ended citation is not met by a file of the same name, nor by
+        that name with an extension. #>
+    param([Parameter(Mandatory)][string]$Token, [Parameter(Mandatory)][AllowEmptyString()][string]$FromRel, [switch]$Directory)
     $fromDir = [System.IO.Path]::GetDirectoryName($FromRel)
     foreach ($base in @('', $fromDir)) {
         $joined = if ($base) { "$base/$Token" } else { $Token }
         $full = [System.IO.Path]::GetFullPath((Join-Path $Root $joined))
         if (-not $full.StartsWith($Root, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         $rel = [System.IO.Path]::GetRelativePath($Root, $full).Replace('\', '/').TrimEnd('/')
+        if ($Directory) {
+            if ($rel -eq '.' -or $trackedDirs.Contains($rel)) { return $true }
+            if (Test-Path -LiteralPath $full -PathType Container) { return $true }
+            continue
+        }
         if ($trackedSet.Contains($rel) -or $trackedDirs.Contains($rel)) { return $true }
         if (Test-Path -LiteralPath $full) { return $true }
     }
     return $false
 }
 
+function Test-OtherTree {
+    <#  claude.build.ledger/docs/x.md, github.com/... - a first segment shaped like a host or a
+        repository name that is not a directory here cites another tree, which is not measurable. #>
+    param([Parameter(Mandatory)][string]$Token)
+    $first = ($Token -split '/')[0]
+    return ($first -match '^[A-Za-z0-9-]+\.[A-Za-z]' -and -not $trackedDirs.Contains($first) -and
+        -not (Test-Path -LiteralPath (Join-Path $Root $first)))
+}
+
 $candidates = [System.Collections.Generic.List[hashtable]]::new()
 # Not preceded by a path character, '$' (a variable: "repos/$Repo/...") or ':' (a revision spec,
 # repo@sha:path, which cites another tree on purpose).
 $pathPattern = '(?<![A-Za-z0-9_./\\$:-])(?<p>(?:\.{1,2}/)*\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_.-]+)*\.(?:md|ps1|psm1|psd1|json|jsonl|yml|yaml|txt))(?![A-Za-z0-9_/-])'
+# A directory: the same shape with no extension and a trailing slash. Not followed by a path
+# character (a path to a markdown file is a file citation, not one of its folder), by '*' (a
+# glob), or by '$', '<', '{', '[' or '%', which make it a template: repos/$Repo/..., origin/$b,
+# feature/<something>.
+$dirPattern = '(?<![A-Za-z0-9_./\\$:-])(?<p>(?:\.{1,2}/)*\.?[A-Za-z0-9_-][A-Za-z0-9_.-]*(?:/[A-Za-z0-9_.-]+)*/)(?![A-Za-z0-9_.*/\\$<{\[%-])'
 foreach ($m in $models) {
     foreach ($hit in [regex]::Matches($m.Text, $pathPattern)) {
         $token = $hit.Groups['p'].Value
@@ -369,14 +396,20 @@ foreach ($m in $models) {
             if (-not $quoted -or $diskLeaves.Contains($token)) { continue }
         }
         else {
-            $first = ($token -split '/')[0]
-            # claude.build.ledger/docs/x.md, github.com/... - another tree, not measurable here.
-            if ($first -match '^[A-Za-z0-9-]+\.[A-Za-z]' -and -not $trackedDirs.Contains($first) -and
-                -not (Test-Path -LiteralPath (Join-Path $Root $first))) { continue }
+            if (Test-OtherTree -Token $token) { continue }
             if (Test-Cited -Token $token -FromRel $m.Rel) { continue }
         }
         if (Test-TestData -Model $m -Offset $i) { continue }
         $line = Get-LineOf -Model $m -Offset $i
+        $candidates.Add(@{ Token = $token; Rel = $m.Rel; Line = $line; Source = "cited: $(Get-LineText -Model $m -Line $line)" })
+    }
+    foreach ($hit in [regex]::Matches($m.Text, $dirPattern)) {
+        $token = $hit.Groups['p'].Value
+        if ($token -match '^(\.{1,2}/)+$' -or $notDirectories.Contains($token)) { continue }
+        if (Test-OtherTree -Token $token) { continue }
+        if (Test-Cited -Token $token -FromRel $m.Rel -Directory) { continue }
+        if (Test-TestData -Model $m -Offset $hit.Index) { continue }
+        $line = Get-LineOf -Model $m -Offset $hit.Index
         $candidates.Add(@{ Token = $token; Rel = $m.Rel; Line = $line; Source = "cited: $(Get-LineText -Model $m -Line $line)" })
     }
 }
@@ -410,7 +443,15 @@ if ($Policy) {
 $ignored = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 # Only tokens that stay inside the root: one '../x' in a chunk makes check-ignore die with
 # "outside repository" and answer nothing for every other path in that chunk.
-$probe = @($candidates | ForEach-Object { $_.Token } |
+#
+# A directory token is probed through a child path, never as itself. A blank line in a CRLF
+# .gitignore reaches git as an EMPTY pattern once the CR is stripped, and git 2.41's
+# check-ignore matches that pattern against ANY slash-ended path - images@249752d's
+# .gitignore:38 - so probing the slash-ended token itself called every directory citation in
+# that tree ignored, the ADR folder T0 missed among them. A path under the directory is
+# ignored exactly when the directory is, and has no trailing slash for git to trip on.
+$dirProbe = 'inspect-repo-probe'
+$probe = @($candidates | ForEach-Object { if ($_.Token.EndsWith('/')) { $_.Token + $dirProbe } else { $_.Token } } |
         Where-Object { $_ -match '/' -and $_ -notmatch '(^|/)\.\.(/|$)' } | Sort-Object -Culture '' -CaseSensitive -Unique)
 # Arguments, not --stdin: PowerShell writes native stdin with the platform newline, so on
 # Windows git read 'path\r', found it ignored, and echoed it back quoted - matching nothing here.
@@ -419,7 +460,11 @@ for ($k = 0; $k -lt $probe.Count; $k += 50) {
     $PSNativeCommandUseErrorActionPreference = $false
     $out = @(& git -C $Root check-ignore --no-index -- @chunk 2>$null)
     $PSNativeCommandUseErrorActionPreference = $true
-    foreach ($o in $out) { [void]$ignored.Add(([string]$o).Trim()) }
+    foreach ($o in $out) {
+        $p = ([string]$o).Trim()
+        if ($p.EndsWith("/$dirProbe")) { $p = $p.Substring(0, $p.Length - $dirProbe.Length) }
+        [void]$ignored.Add($p)
+    }
 }
 
 $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
@@ -428,8 +473,9 @@ foreach ($c in $candidates) {
     if ($optional.ContainsKey($c.Token) -and $optional[$c.Token] -contains $c.Rel) { continue }
     if (-not $seen.Add("$($c.Rel)|$($c.Line)|$($c.Token)")) { continue }
     $isRecord = $c.Rel -match '^(END_GOAL\.md|CHANGELOG[^/]*|docs/plans/.+)$'
+    $what = if ($c.Token.EndsWith('/')) { 'is not a directory in the tree' } else { 'does not exist in the tree' }
     Add-Found 'cited-file-missing' $c.Rel $c.Line $(if ($isRecord) { 'warn' } else { 'fail' }) `
-        "'$($c.Token)' does not exist in the tree; $($c.Source)"
+        "'$($c.Token)' $what; $($c.Source)"
 }
 
 # ------------------------------------------------------------------ directory-name-guard

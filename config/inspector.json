@@ -12,5 +12,15 @@
       "cited_in": [ "src/Inspect-Repo.ps1" ],
       "reason": "-Policy accepts a directory and reads AGENTS.md, docs/do-not.md and CLAUDE.md from it if present. That help text names an input shape, not a file this repository must carry."
     }
+  ],
+  "not_directories": [
+    {
+      "token": "feature/",
+      "reason": "The feature branch prefix, config/repo.json -> branches.feature_prefix."
+    },
+    {
+      "token": "refs/heads/",
+      "reason": "A git ref namespace, stripped from branch names in scripts/ci/Test-BranchFlow.ps1."
+    }
   ]
 }

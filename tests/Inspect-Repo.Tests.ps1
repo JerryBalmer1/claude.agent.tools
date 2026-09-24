@@ -103,6 +103,22 @@ Describe 'Inspect-Repo: rules' {
         @($v.Verdict | Sort-Object -Unique) | Should -Be @('fail')
     }
 
+    It 'cited-file-missing: a path ending in / is met only by a directory; templates, globs and not_directories are not citations' {
+        $root = New-Fixture @{
+            # CRLF, with a blank line: git strips the CR and keeps an EMPTY pattern, which
+            # check-ignore then matches against any slash-ended path. images@249752d has one.
+            '.gitignore'            = "output/`r`n`r`nobj/`r`n"
+            'config/inspector.json' = '{"not_directories":[{"token":"feature/","reason":"branch prefix"}]}'
+            'docs/here/x.md'        = 'x'
+            'docs/NOTES.md'         = 'x'
+            'docs/LICENSE'          = 'x'
+            'README.md'             = '`docs/here/` `docs/NOTES/` `docs/LICENSE/` `docs/gone/` output/ feature/ feature/* repos/$r/x origin/$b refs/<x>/'
+        }
+        $v = @(Invoke-Inspector -Root $root | Where-Object Rule -eq 'cited-file-missing')
+        @($v | ForEach-Object { ($_.Evidence -split "'")[1] } | Sort-Object) | Should -Be @('docs/gone/', 'docs/LICENSE/', 'docs/NOTES/')
+        @($v.Evidence | Where-Object { $_ -notlike '*is not a directory in the tree*' }) | Should -BeNullOrEmpty
+    }
+
     It 'cited-file-missing: a record (END_GOAL.md, docs/plans/**) is warn, not fail' {
         $root = New-Fixture @{
             'END_GOAL.md'          = 'cited `docs/gone.md`'
