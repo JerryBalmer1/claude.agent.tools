@@ -12,7 +12,12 @@
     which is the exact failure it exists to prevent. Pass -NoFetch to skip it.
 
     Paste the output into a planning chat. If a plan's Context disagrees with
-    this output, the plan is wrong. See FLOW.md section 3.
+    this output, the plan is wrong.
+
+    Copied from claude.agent.images@249752d (blob d1d3704a), then adapted: the
+    citations of FLOW.md, AFTER-CLAUDE-COMMITS.md and snake.ps1 are gone because
+    none of them exist in this repository, and the active-plan section reads
+    docs/plans/<date>-<slug>/PLAN.md. The origin guard is unchanged.
 
 .PARAMETER NoFetch
     Skip `git fetch`. Output may be stale. Use only when offline.
@@ -85,7 +90,7 @@ function Write-Section {
 $root = Invoke-Tolerant -Command { git rev-parse --show-toplevel } -Fallback $null
 if (-not $root) {
     Write-Host 'state: not inside a git work tree.'
-    Write-Host "state: cd to the clone first - see FLOW.md section 1."
+    Write-Host "state: cd to the clone first."
     exit 1
 }
 $root = ([string]$root).Trim()
@@ -108,7 +113,7 @@ $origin = ([string](Invoke-Tolerant -Command { git remote get-url origin } -Fall
 $scriptRoot = Invoke-Tolerant -Command { git -C $PSScriptRoot rev-parse --show-toplevel } -Fallback $null
 if (-not $scriptRoot) {
     Write-Host 'state: this script is not itself inside a git work tree.'
-    Write-Host "state: script at $PSScriptRoot - see FLOW.md section 1."
+    Write-Host "state: script at $PSScriptRoot."
     exit 1
 }
 $scriptRoot = ([string]$scriptRoot).Trim()
@@ -117,7 +122,7 @@ if ([System.IO.Path]::GetFullPath($root) -ne [System.IO.Path]::GetFullPath($scri
     Write-Host 'state: wrong work tree.'
     Write-Host "state: reporting on    $root  (origin = $origin)"
     Write-Host "state: script lives in $scriptRoot"
-    Write-Host 'state: cd into the clone this script belongs to - see FLOW.md section 1.'
+    Write-Host 'state: cd into the clone this script belongs to.'
     exit 1
 }
 
@@ -145,7 +150,6 @@ Write-Host ("current:      {0} @ {1}" -f ([string]$branch).Trim(), (Get-RefSha -
 if ($dirty.Count -gt 0) {
     Write-Host ("tree:         DIRTY - {0} path(s)" -f $dirty.Count)
     $dirty | ForEach-Object { Write-Host "                $_" }
-    Write-Host '              uncommitted work strands easily - see AFTER-CLAUDE-COMMITS.md'
 }
 else {
     Write-Host 'tree:         clean'
@@ -274,22 +278,21 @@ else {
     }
 }
 
-Write-Section 'active plan'
-$active = Join-Path $root 'docs/plans/ACTIVE.md'
-if (-not (Test-Path -LiteralPath $active)) {
-    Write-Host 'docs/plans/ACTIVE.md: ABSENT - no active plan, a legal state'
-    Write-Host '              AGENTS.md disagreement row 2: the STOP fires only when the'
-    Write-Host '              file EXISTS and names another branch. snake.ps1 -NextPlan drafts one.'
+Write-Section 'plans'
+# Tools records each packet's plan at docs/plans/<yyyy-MM-dd>-<slug>/PLAN.md. There is no
+# ACTIVE.md here; the newest dated folder is the current one, and the report names it.
+$plansDir = Join-Path $root 'docs/plans'
+$plans = @()
+if (Test-Path -LiteralPath $plansDir) {
+    $plans = @(Get-ChildItem -LiteralPath $plansDir -Directory |
+        Where-Object { $_.Name -match '^\d{4}-\d{2}-\d{2}-' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'PLAN.md')) } |
+        Sort-Object -Property Name)
+}
+if ($plans.Count -eq 0) {
+    Write-Host 'docs/plans: no dated PLAN.md'
 }
 else {
-    $planBranch = (Select-String -Path $active -Pattern '^Branch:\s*(.+)$' | Select-Object -First 1)
-    $planStatus = (Select-String -Path $active -Pattern '^Status:\s*(.+)$' | Select-Object -First 1)
-    $named = if ($planBranch) { $planBranch.Matches[0].Groups[1].Value.Trim() } else { '(none)' }
-    Write-Host ("docs/plans/ACTIVE.md: present  branch={0}  status={1}" -f $named,
-        $(if ($planStatus) { $planStatus.Matches[0].Groups[1].Value.Trim() } else { 'unknown' }))
-    if ($named -ne ([string]$branch).Trim()) {
-        Write-Host ("WARNING:      plan names '{0}' but HEAD is '{1}' - AGENTS.md says STOP" -f $named, ([string]$branch).Trim())
-    }
+    Write-Host ("newest:       docs/plans/{0}/PLAN.md   ({1} plan(s))" -f $plans[-1].Name, $plans.Count)
 }
 
 Write-Section 'guard preview (CI enforces these)'
@@ -305,5 +308,5 @@ Write-Host ("lightweight tags:              {0}" -f $(if ($lightweight.Count) { 
 
 Write-Host ''
 Write-Host '=== END LIVE STATE ==='
-Write-Host 'This output outranks any pasted state block. See FLOW.md section 0.'
+Write-Host 'This output outranks any pasted state block.'
 exit 0

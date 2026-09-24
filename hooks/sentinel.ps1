@@ -18,12 +18,18 @@
         this script uses for its own internal failures, so a broken sentinel
         fails CLOSED.
 
-    All of the above is recorded as confirmed in
-    prompts/assessment.2026-09-21.json.
-
     A hook decision can never widen permissions: a permissions.deny rule wins
-    regardless of what this script says. The deny list in managed-settings.json
-    is the wall; this script is the camera and the receipt.
+    regardless of what this script says. The deny list is the wall; this
+    script is the camera and the receipt.
+
+    Copied from claude.agent.images@249752d (blob a3fd294d), then adapted.
+    The decision logic is unchanged. What changed: the two defaults that named
+    paths inside the leash image (/ledger, /opt/leash) now resolve inside this
+    clone - output/ledger/ledger.jsonl and the vendored core's ledger module -
+    and the comments citing images-only files (the run-01 assessment,
+    managed-settings.json, Settings.Tests.ps1) are gone. Tools doesn't arm this
+    hook in .claude/settings.json. It is carried so the shape exists here;
+    arming it is a separate decision.
 
 .PARAMETER Mode
     Enforce - gated tools are denied.
@@ -33,8 +39,7 @@
 
 .PARAMETER GatedTool
     Tools denied under Enforce. Must stay in step with the permissions.deny
-    list in both managed-settings.json files; tests/Settings.Tests.ps1 asserts
-    that it does.
+    list of whatever settings arm this hook.
 
 .PARAMETER LedgerPath
     The receipt chain, on the host-mounted volume. Every decision — allow and
@@ -74,11 +79,11 @@ param(
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string]$LedgerPath = $(if ($env:LEASH_LEDGER_PATH) { $env:LEASH_LEDGER_PATH } else { '/ledger/ledger.jsonl' }),
+    [string]$LedgerPath = $(if ($env:LEASH_LEDGER_PATH) { $env:LEASH_LEDGER_PATH } else { Join-Path (Split-Path $PSScriptRoot -Parent) 'output' 'ledger' 'ledger.jsonl' }),
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
-    [string]$LedgerModule = $(if ($env:LEASH_LEDGER_MODULE) { $env:LEASH_LEDGER_MODULE } else { '/opt/leash/ledger/Ledger.psd1' })
+    [string]$LedgerModule = $(if ($env:LEASH_LEDGER_MODULE) { $env:LEASH_LEDGER_MODULE } else { Join-Path (Split-Path $PSScriptRoot -Parent) 'vendor' 'claude.agent.core' 'modules' 'ledger' 'ledger.psd1' })
 )
 
 Set-StrictMode -Version Latest
