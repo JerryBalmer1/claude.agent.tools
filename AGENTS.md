@@ -19,6 +19,7 @@ file. A row that cannot be measured does not belong in this table.
 | `typed-verdicts` | Every verdict is a typed object with a result field, never a printed line. | Every `[pscustomobject]` literal under `src/` carries a `PSTypeName` beginning `claude.agent.tools.` and a `Verdict` key. No `Write-Host`, `Out-Host` or `Format-*` call under `src/`. |
 | `temp-root` | Every suite resolves its temp root from `[System.IO.Path]::GetTempPath()`. | No file under `tests/` reads `$env:TEMP`, `$env:TMP` or `$env:TMPDIR`. |
 | `merge-commits-only` | A pull request can land only as a merge commit. | The repository named by `config/repo.json` -> `repo`, read live through `gh api graphql` (in CI with `GITHUB_TOKEN`), answers `mergeCommitAllowed` true, `squashMergeAllowed` false and `rebaseMergeAllowed` false. No answer is a failure, not a pass. |
+| `self-inspection-clean` | `src/Inspect-Repo.ps1` finds nothing to fail in this tree. | `src/Inspect-Repo.ps1 -Path <root> -Offline` emits no verdict whose `Verdict` is `fail`. Fixture text is excused only by `config/inspector.json` -> `test_data`, and an optional input only by `optional_files`. `-Offline` leaves the live `unprotected-branch` rule `unknown`, so branch protection is not part of this claim. |
 
 ## Branches
 

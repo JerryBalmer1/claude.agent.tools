@@ -6,13 +6,14 @@
 .DESCRIPTION
     This is the SECOND chain, and it is deliberately not the first.
 
-    `.ledger/ledger.jsonl` is schema v1: eight frozen keys, one writer, and every hash
-    already written depends on that set never changing. A continuity or forensic entry
-    is not a receipt and must never be forced into that schema - a ninth key invalidates
-    the entire history. `docs/continuity.md` records that if continuity were ever to be
-    hash-chained for real it would be a second, separate NDJSON chain reusing the same
-    canonical-JSON discipline, and that it must not be started without being asked.
-    Jerry asked on 2026-09-20.
+    The receipt ledger that core's ledger module writes is schema v1: eight frozen keys,
+    one writer, and every hash already written depends on that set never changing. A
+    continuity or forensic entry is not a receipt and must never be forced into that
+    schema - a ninth key invalidates the entire history. The continuity design this
+    script was born under said that if continuity were ever to be hash-chained for real
+    it would be a second, separate NDJSON chain reusing the same canonical-JSON
+    discipline, and that it must not be started without being asked. Jerry asked on
+    2026-09-20.
 
     Schema forensic-v1, eight keys, in this order, frozen from birth:
 
