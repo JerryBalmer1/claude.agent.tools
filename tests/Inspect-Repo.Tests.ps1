@@ -208,6 +208,103 @@ Describe 'Inspect-Repo: the target''s settings, config/inspector.json' {
     }
 }
 
+Describe 'Inspect-Repo: .claude/settings.json rules' {
+    BeforeAll {
+        $script:SettingsRules = @('settings-missing', 'default-mode-auto', 'default-mode-bypass',
+            'no-deny-rules', 'hooks-disabled', 'allow-contains-bash')
+
+        # Only the six settings rules, so a fixture's other files cannot move a count.
+        function script:Get-SettingsVerdict {
+            param([string]$Root, [hashtable]$Extra = @{ Offline = $true })
+            @(Invoke-Inspector -Root $Root -Extra $Extra | Where-Object { $script:SettingsRules -contains $_.Rule })
+        }
+    }
+
+    It 'a settings.json that declares a deny rule and nothing risky emits none of the six' {
+        $root = New-Fixture @{ '.claude/settings.json' = '{"permissions":{"defaultMode":"acceptEdits","allow":["Read(*)"],"deny":["Read(./.env)"]}}' }
+        Get-SettingsVerdict -Root $root | Should -BeNullOrEmpty
+    }
+
+    It 'settings-missing: no tracked .claude/settings.json is one warn at line 0' {
+        $root = New-Fixture @{ 'README.md' = 'no settings here' }
+        $v = Get-SettingsVerdict -Root $root
+        $v.Count | Should -Be 1
+        $v[0].Rule | Should -Be 'settings-missing'
+        $v[0].Path | Should -Be '.claude/settings.json'
+        $v[0].Line | Should -Be 0
+        $v[0].Verdict | Should -Be 'warn'
+    }
+
+    It 'default-mode-auto: defaultMode auto is a warn on the defaultMode line' {
+        $root = New-Fixture @{ '.claude/settings.json' = "{`n  `"permissions`": {`n    `"defaultMode`": `"auto`",`n    `"deny`": [`"Read(./.env)`"]`n  }`n}" }
+        $v = Get-SettingsVerdict -Root $root
+        $v.Count | Should -Be 1
+        $v[0].Rule | Should -Be 'default-mode-auto'
+        $v[0].Verdict | Should -Be 'warn'
+        $v[0].Line | Should -Be 3
+    }
+
+    It 'default-mode-bypass: defaultMode bypassPermissions is a fail' {
+        $root = New-Fixture @{ '.claude/settings.json' = '{"permissions":{"defaultMode":"bypassPermissions","deny":["Read(./.env)"]}}' }
+        $v = Get-SettingsVerdict -Root $root
+        $v.Count | Should -Be 1
+        $v[0].Rule | Should -Be 'default-mode-bypass'
+        $v[0].Verdict | Should -Be 'fail'
+        $v[0].Line | Should -Be 1
+    }
+
+    It 'no-deny-rules: an empty deny list and a missing one are each a warn' {
+        $empty = New-Fixture @{ '.claude/settings.json' = '{"permissions":{"allow":["Read(*)"],"deny":[]}}' }
+        $none = New-Fixture @{ '.claude/settings.json' = '{"hooks":{}}' }
+        foreach ($root in $empty, $none) {
+            $v = Get-SettingsVerdict -Root $root
+            $v.Count | Should -Be 1
+            $v[0].Rule | Should -Be 'no-deny-rules'
+            $v[0].Verdict | Should -Be 'warn'
+        }
+    }
+
+    It 'hooks-disabled: disableAllHooks true is a fail, and false is nothing' {
+        $on = New-Fixture @{ '.claude/settings.json' = '{"disableAllHooks":true,"permissions":{"deny":["Read(./.env)"]}}' }
+        $off = New-Fixture @{ '.claude/settings.json' = '{"disableAllHooks":false,"permissions":{"deny":["Read(./.env)"]}}' }
+        $v = Get-SettingsVerdict -Root $on
+        $v.Count | Should -Be 1
+        $v[0].Rule | Should -Be 'hooks-disabled'
+        $v[0].Verdict | Should -Be 'fail'
+        Get-SettingsVerdict -Root $off | Should -BeNullOrEmpty
+    }
+
+    It 'allow-contains-bash: one warn per shell entry, on its own line, and none for anything else' {
+        $root = New-Fixture @{ '.claude/settings.json' = "{`"permissions`": {`n`"allow`": [`n`"Read(*)`",`n`"Bash(git status)`",`n`"shell`",`n`"WebFetch`"`n],`n`"deny`": [`"Read(./.env)`"]}}" }
+        $v = Get-SettingsVerdict -Root $root
+        $v.Count | Should -Be 2
+        @($v.Rule | Sort-Object -Unique) | Should -Be @('allow-contains-bash')
+        @($v.Verdict | Sort-Object -Unique) | Should -Be @('warn')
+        @($v.Line | Sort-Object) | Should -Be @(4, 5)
+    }
+
+    It 'allow-contains-bash: fail under -Policy when the law has a halt-weight rule' {
+        $root = New-Fixture @{
+            'AGENTS.md'             = "# law`n`n- Do not import Ledger.`n"
+            '.claude/settings.json' = '{"permissions":{"allow":["Bash(*)"],"deny":["Read(./.env)"]}}'
+        }
+        $v = @(Get-SettingsVerdict -Root $root -Extra @{ Offline = $true; Policy = (Join-Path $root 'AGENTS.md') })
+        $v.Count | Should -Be 1
+        $v[0].Rule | Should -Be 'allow-contains-bash'
+        $v[0].Verdict | Should -Be 'fail'
+        $v[0].Evidence | Should -Match 'halt-weight rule'
+    }
+
+    It 'a tracked settings.json that is not a JSON object is refused, not judged' {
+        $bad = New-Fixture @{ '.claude/settings.json' = '{ not json' }
+        { Invoke-Inspector -Root $bad } | Should -Throw '*not valid JSON*'
+        $array = New-Fixture @{ '.claude/settings.json' = '[1, 2]' }
+        { Invoke-Inspector -Root $array } | Should -Throw '*not a JSON object*'
+        $blank = New-Fixture @{ '.claude/settings.json' = '   ' }
+        { Invoke-Inspector -Root $blank } | Should -Throw '*not a JSON object*'
+    }
+}
+
 Describe 'Inspect-Repo: switches' {
     It '-Halt exits 1 when any verdict is fail, and 0 when none is' {
         # Exit 1 is the passing case here, so a non-zero native exit must not throw.

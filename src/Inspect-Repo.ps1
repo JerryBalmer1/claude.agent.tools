@@ -36,6 +36,25 @@
       directory-name-guard A PowerShell comparison against a literal repository name, the
                            shape `$root -notmatch 'claude\.agent\.images$'`. A guard like that
                            ties a script to one folder name. fail.
+
+      The six below read the target's .claude/settings.json, the file Claude Code takes its
+      permissions and hooks from. Ported, not reinvented: docs/DECISIONS.md D4 names the source
+      and every place the port differs from it.
+
+      settings-missing     .claude/settings.json is not tracked. warn: nothing is declared,
+                           which is a fact about the repository and not a defect in it.
+      default-mode-auto    permissions.defaultMode is auto. warn.
+      default-mode-bypass  permissions.defaultMode is bypassPermissions. fail.
+      no-deny-rules        permissions.deny is absent or empty. warn.
+      hooks-disabled       disableAllHooks is true. fail.
+      allow-contains-bash  A permissions.allow entry hands over a shell: it matches
+                           ^(Bash|Shell)(\(|$), case-insensitively. One verdict per entry.
+                           warn; fail under -Policy when the law compiles to at least one
+                           halt-weight rule, the only case the source ever raised it in.
+
+      A .claude/settings.json that is tracked but empty, not JSON, or not a JSON object is a
+      terminating error, not a verdict: none of the six can be judged on it.
+
       unprotected-branch   GET repos/<slug>/branches/<branch>/protection answers 404 Branch not
                            protected for a branch config/repo.json names. fail. Any other API
                            answer is unknown. This one measures live state, not the tree, so
@@ -383,6 +402,7 @@ foreach ($m in $models) {
     }
 }
 
+$policyRules = @()
 if ($Policy) {
     $policyModule = Join-Path $ToolsRoot 'vendor' 'claude.agent.core' 'modules' 'policy' 'policy.psd1'
     if (-not (Test-Path -LiteralPath $policyModule)) {
@@ -390,7 +410,8 @@ if ($Policy) {
     }
     Import-Module $policyModule -Force -ErrorAction Stop
     $policyFull = (Resolve-Path -LiteralPath $Policy).ProviderPath
-    foreach ($rule in @(Get-PolicyRules -Path $policyFull | Where-Object Kind -eq 'path')) {
+    $policyRules = @(Get-PolicyRules -Path $policyFull)
+    foreach ($rule in @($policyRules | Where-Object Kind -eq 'path')) {
         $token = ([string]$rule.Basis).TrimEnd('/')
         if (Test-Cited -Token $token -FromRel '') { continue }
         $sourceFile, $sourceLine = ([string]$rule.Source) -split ':', 2
@@ -461,6 +482,75 @@ foreach ($m in @($models | Where-Object Kind -eq 'powershell')) {
     foreach ($g in $guards) {
         Add-Found 'directory-name-guard' $m.Rel $g.Extent.StartLineNumber 'fail' `
             "comparison against a literal repository name ties this script to one folder name: $(Get-LineText -Model $m -Line $g.Extent.StartLineNumber)"
+    }
+}
+
+# ------------------------------------------------------------------ .claude/settings.json
+
+# The six settings rules. Each check, and the shell pattern, is the source's (D4); what changed is
+# the output: a typed verdict with a line, where the source added a string to a report.
+$claudeRel = '.claude/settings.json'
+
+function Get-JsonMember {
+    <#  One named member of a parsed JSON object, or $null when it is absent or the value is not an object. #>
+    param([AllowNull()]$Object, [Parameter(Mandatory)][string]$Name)
+    if ($Object -isnot [System.Management.Automation.PSCustomObject]) { return $null }
+    $p = $Object.PSObject.Properties[$Name]
+    if ($null -eq $p) { return $null }
+    return $p.Value
+}
+
+function Get-JsonLine {
+    <#  1-based line of the first match of Pattern in the settings text, or 0. #>
+    param([Parameter(Mandatory)][string]$Text, [Parameter(Mandatory)][string]$Pattern)
+    $hit = [regex]::Match($Text, $Pattern)
+    if (-not $hit.Success) { return 0 }
+    return ([regex]::Matches($Text.Substring(0, $hit.Index), "`n")).Count + 1
+}
+
+if (-not $trackedSet.Contains($claudeRel)) {
+    Add-Found 'settings-missing' $claudeRel 0 'warn' "$claudeRel is not tracked: this repository declares no permissions, deny rules or hooks for Claude Code"
+}
+else {
+    $claudeText = [System.IO.File]::ReadAllText((Join-Path $Root $claudeRel))
+    $claudeSettings = $null
+    if (-not [string]::IsNullOrWhiteSpace($claudeText)) {
+        try { $claudeSettings = $claudeText | ConvertFrom-Json -Depth 20 -ErrorAction Stop }
+        catch { throw "${claudeRel}: not valid JSON. The settings rules cannot judge it. $($_.Exception.Message)" }
+    }
+    if ($claudeSettings -isnot [System.Management.Automation.PSCustomObject]) {
+        throw "${claudeRel}: empty or not a JSON object. The settings rules cannot judge it."
+    }
+
+    $permissions = Get-JsonMember $claudeSettings 'permissions'
+    $defaultMode = [string](Get-JsonMember $permissions 'defaultMode')
+    $modeLine = Get-JsonLine -Text $claudeText -Pattern '"defaultMode"\s*:'
+    if ($defaultMode -eq 'auto') {
+        Add-Found 'default-mode-auto' $claudeRel $modeLine 'warn' 'permissions.defaultMode is auto: tool calls are approved by a classifier, not by a person'
+    }
+    if ($defaultMode -eq 'bypassPermissions') {
+        Add-Found 'default-mode-bypass' $claudeRel $modeLine 'fail' 'permissions.defaultMode is bypassPermissions: every tool call runs without a permission check'
+    }
+
+    $deny = Get-JsonMember $permissions 'deny'
+    if (@($deny | Where-Object { $null -ne $_ }).Count -eq 0) {
+        Add-Found 'no-deny-rules' $claudeRel (Get-JsonLine -Text $claudeText -Pattern '"deny"\s*:') 'warn' 'permissions.deny is absent or empty: nothing is refused outright'
+    }
+
+    if ((Get-JsonMember $claudeSettings 'disableAllHooks') -eq $true) {
+        Add-Found 'hooks-disabled' $claudeRel (Get-JsonLine -Text $claudeText -Pattern '"disableAllHooks"\s*:') 'fail' "disableAllHooks is true: no hook in this file runs"
+    }
+
+    $haltLaw = @($policyRules | Where-Object Weight -eq 'halt').Count
+    foreach ($entry in @(Get-JsonMember $permissions 'allow')) {
+        if ($entry -isnot [string] -or $entry -notmatch '^(Bash|Shell)(\(|$)') { continue }
+        $line = Get-JsonLine -Text $claudeText -Pattern ([regex]::Escape(($entry | ConvertTo-Json -Compress)))
+        if ($haltLaw -gt 0) {
+            Add-Found 'allow-contains-bash' $claudeRel $line 'fail' "permissions.allow hands over a shell: '$entry', against $haltLaw halt-weight rule(s) compiled from -Policy"
+        }
+        else {
+            Add-Found 'allow-contains-bash' $claudeRel $line 'warn' "permissions.allow hands over a shell: '$entry'; no halt-weight law was given (-Policy), so it is not a fail"
+        }
     }
 }
 
