@@ -1,7 +1,8 @@
 # AGENTS.md
 
 `claude.agent.tools` is **commands**: deterministic scripts that observe a repository and emit
-verdicts. It absorbs `claude.build.inspector` and `claude.build.fuzzer`. Conventions are carried
+verdicts. The inspector's settings.json observer is ported into `src/Inspect-Repo.ps1` (D4);
+the fuzzer is archived at `1cf2c63`, not ported (D5). Conventions are carried
 from `claude.agent.images` at `249752d`, not from substrate.
 
 ## Claims
